@@ -20,7 +20,7 @@
   .sub { opacity: 0.9; }
   .tag { position: absolute; bottom: 10px; left: 0; right: 0; text-align:center; opacity: .65; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; }
   .heart { width:16px; height:16px; display:inline-block; }
-  #boardBtn { position: absolute; bottom: 10px; left: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+  #boardBtn { position: absolute; bottom: 20px; left: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
     padding: 6px 10px; border-radius: 10px; font-size: 13px; cursor: pointer; color:#eee; }
   #boardPanel { position: absolute; top: 56px; right: 10px; width: 340px; max-width: 92vw; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.12);
     border-radius: 12px; padding: 12px; display: none; backdrop-filter: blur(6px); z-index: 5; }
@@ -490,7 +490,7 @@ const SPOTI = {
         else { nextRelicDelay = Math.max(2.5, nextRelicDelay * 0.6); lastRelic = time; }
       }
     }
-
+            
     for (let p of petals){ p.y += p.vy*dt; p.rot += p.vr*dt; drawPetal(p.x, p.y, p.r, p.rot); }
     for (let s of shadows){ s.y += s.vy*dt; drawShadow(s.x, s.y, s.r, s.pulse); }
     for (let r of relics){ r.y += r.vy*dt; r.rot += r.vr*dt; drawRelic(r); }
