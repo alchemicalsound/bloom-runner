@@ -698,19 +698,26 @@ const SPOTI = {
     }
 
 })();
-/* === Bloom Runner: Pantalla Completa (toggle) === */
+  
+<!-- === Bloom Runner: Pantalla Completa (toggle) — iOS-safe === -->
 (function () {
-  const wrap   = document.getElementById('wrap');   // contenedor principal
-  const canvas = document.getElementById('game');   // tu <canvas>
+  const wrap   = document.getElementById('wrap');
+  const canvas = document.getElementById('game');
 
-  // Botón dentro de #wrap para que exista también en FS
+  // Detectar iOS
+  const isIOS = (() => {
+    const ua = navigator.userAgent || navigator.vendor || window.opera;
+    return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  })();
+
+  // Botón FS
   const fsBtn = document.createElement('button');
   fsBtn.id = 'fsBtn';
   fsBtn.title = 'Pantalla completa (F / doble toque)';
   fsBtn.textContent = '⛶';
   wrap.appendChild(fsBtn);
 
-  // Estilos del botón (desktop + mobile)
+  // Estilos del botón + pseudo-FS
   const style = document.createElement('style');
   style.textContent = `
     #wrap { position: relative; }
@@ -719,105 +726,122 @@ const SPOTI = {
       background: rgba(0,0,0,0.45);
       border:2px solid rgba(255,255,255,0.7);
       color:#fff; border-radius:50%;
-      width:50px; height:50px;
-      font-size:22px; font-weight:700;
+      width:50px; height:50px; font-size:22px; font-weight:700;
       display:flex; align-items:center; justify-content:center;
-      cursor:pointer; backdrop-filter: blur(6px);
-      touch-action: manipulation;
+      cursor:pointer; backdrop-filter: blur(6px); touch-action: manipulation;
     }
     #fsBtn:hover{ background: rgba(0,0,0,0.65); }
-    @media (max-width: 600px){
-      #fsBtn{ width:60px; height:60px; font-size:28px; }
+    @media (max-width: 600px){ #fsBtn{ width:60px; height:60px; font-size:28px; } }
+
+    /* Pseudo-fullscreen para iOS o fallback */
+    body.ios-pseudo-fs { overflow: hidden; }
+    #wrap.ios-pseudo-fs {
+      position: fixed !important; inset: 0 !important; width: 100vw !important;
+      height: 100dvh !important; /* dvh ayuda en iOS 16+ con la barra dinámica */
+      background: #000;
+      z-index: 9990;
     }
   `;
   document.head.appendChild(style);
-  // React to device orientation changes (mobile)
-  window.addEventListener('orientationchange', () => {
-    setTimeout(() => {
-      if (typeof window.resize === 'function') {
-        try { window.resize(); } catch(_) {}
-      }
-      requestAnimationFrame(snapBaseline);
-    }, 60);
-  });
 
-
-  // Helpers fullscreen cross-browser
-  function isFS() {
+  // Helpers Fullscreen nativo
+  function isNativeFS() {
     return document.fullscreenElement || document.webkitFullscreenElement ||
            document.mozFullScreenElement || document.msFullscreenElement;
   }
-  async function enterFS() {
+  async function enterNativeFS() {
     const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen ||
                 wrap.mozRequestFullScreen || wrap.msRequestFullscreen;
-    if (req) await req.call(wrap);
-  
-    try {
-      if (screen.orientation && screen.orientation.lock) {
-        await screen.orientation.lock('landscape');
-      }
-    } catch(_) {}
+    if (!req) throw new Error('No Fullscreen API');
+    await req.call(wrap);
+    // Intento de lock landscape (no siempre soportado en iOS)
+    try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); } catch(_) {}
   }
-  async function exitFS() {
+  async function exitNativeFS() {
     const ex = document.exitFullscreen || document.webkitExitFullscreen ||
                document.mozCancelFullScreen || document.msExitFullscreen;
-    if (ex) await ex.call(document);
-  }
-  async function toggleFS() {
-    if (isFS()) await exitFS(); else await enterFS();
+    if (!ex) return;
+    await ex.call(document);
   }
 
-  // Interacciones
-  fsBtn.addEventListener('click', toggleFS);
-  document.addEventListener('keydown', (e) => {
-    if (e.key && e.key.toLowerCase() === 'f') toggleFS();
-    // Nota: Tu pausa ya está en 'P' en tu juego; no tocamos nada aquí.
-  });
-  if (canvas) {
-    let lastTap = 0;
-    canvas.addEventListener('dblclick', toggleFS);
+  // Pseudo-FS
+  function enterPseudoFS() {
+    document.body.classList.add('ios-pseudo-fs');
+    wrap.classList.add('ios-pseudo-fs');
+    // Recalcular canvas y baseline del prota
+    if (typeof window.resize === 'function') { try { window.resize(); } catch(_) {} }
+    if (typeof window.BR_ensurePlayer === 'function') window.BR_ensurePlayer();
+    if (typeof window.BR_snapBaseline === 'function') window.BR_snapBaseline();
+  }
+  function exitPseudoFS() {
+    wrap.classList.remove('ios-pseudo-fs');
+    document.body.classList.remove('ios-pseudo-fs');
+    if (typeof window.resize === 'function') { try { window.resize(); } catch(_) {} }
+    if (typeof window.BR_snapBaseline === 'function') window.BR_snapBaseline();
+  }
+  function inPseudoFS() { return wrap.classList.contains('ios-pseudo-fs'); }
+
+  // Toggle unificado
+  async function toggleFS() {
+    // iOS: intentamos nativo, si falla vamos a pseudo
+    if (isIOS) {
+      if (inPseudoFS()) { exitPseudoFS(); fsBtn.textContent = '⛶'; return; }
+      try {
+        await enterNativeFS();
+        fsBtn.textContent = '↙';
+      } catch {
+        // Fallback inmediato
+        enterPseudoFS();
+        fsBtn.textContent = '↙';
+      }
+      return;
     }
 
-  // Sincroniza icono y reajusta canvas si tienes resize()
+    // No iOS: usar nativo normal con fallback pseudo por si algo falla
+    if (isNativeFS()) {
+      await exitNativeFS();
+      fsBtn.textContent = '⛶';
+    } else {
+      try {
+        await enterNativeFS();
+        fsBtn.textContent = '↙';
+      } catch {
+        enterPseudoFS();
+        fsBtn.textContent = '↙';
+      }
+    }
+  }
+
+  // Eventos UI
+  fsBtn.addEventListener('click', toggleFS);
+  document.addEventListener('keydown', (e) => { if (e.key && e.key.toLowerCase() === 'f') toggleFS(); });
+
+  // Doble click (solo desktop; en iOS evitamos para no confundir con zoom)
+  if (!isIOS && canvas) {
+    canvas.addEventListener('dblclick', toggleFS);
+  }
+
+  // Sincronizar icono y reajustar al cambiar estado nativo
   ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange','MSFullscreenChange'].forEach(ev=>{
     document.addEventListener(ev, () => {
-      fsBtn.textContent = isFS() ? '↙' : '⛶';
-    // Al SALIR de fullscreen, coloca al prota en su posición base
-    const inFS = document.fullscreenElement || document.webkitFullscreenElement ||
-                 document.mozFullScreenElement || document.msFullscreenElement;
-    if (!inFS && typeof player !== 'undefined' && player && typeof h !== 'undefined') {
+      fsBtn.textContent = isNativeFS() || inPseudoFS() ? '↙' : '⛶';
+      // Al salir, recolocar prota
+      const inFSNow = isNativeFS() || inPseudoFS();
+      if (!inFSNow && typeof player !== 'undefined' && player && typeof h !== 'undefined') {
         player.y = Math.floor(h * 0.85);
         const margin = player.r * 1.2;
-        player.x = Math.max(margin, Math.min(w - margin, player.x));
-    }
-
-      if (typeof window.resize === 'function') {
-        try { window.resize(); } catch(_) {}
+        player.x = Math.max(margin, Math.min((typeof w !== 'undefined' ? w : canvas.width) - margin, player.x));
       }
+      if (typeof window.resize === 'function') { try { window.resize(); } catch(_) {} }
     });
   });
-})();
-(function(){
-  function onExitFS() {
-    try {
-      // Accede a player, w, h si están en el scope global de tu juego;
-      // si están en el IIFE, expón un helper, o llama a window.resize()
-      if (typeof player !== "undefined" && player && typeof h !== "undefined") {
-        player.y = Math.floor(h * 0.85);
-        // opcional: centra un poco en X si también se desalineó
-        player.x = Math.max(player.r * 1.2, Math.min((typeof w !== "undefined" ? w : canvas.width) - player.r * 1.2, player.x));
-      }
-      // Recalcula layout del canvas si tienes resize()
-      if (typeof window.resize === "function") window.resize();
-    } catch(e) {}
-  }
 
-  // Detecta salida de fullscreen (todas las variantes)
-  ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange','MSFullscreenChange'].forEach(ev=>{
-    document.addEventListener(ev, () => {
-      const inFS = document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement;
-      if (!inFS) onExitFS(); // sólo cuando salimos
-    });
+  // Cambios de orientación: reajustar canvas y baseline
+  window.addEventListener('orientationchange', () => {
+    setTimeout(() => {
+      if (typeof window.resize === 'function') { try { window.resize(); } catch(_) {} }
+      if (typeof window.BR_snapBaseline === 'function') window.BR_snapBaseline();
+    }, 60);
   });
 })();
 </script>
